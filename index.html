@@ -1,0 +1,487 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bioregional Ecosystem Restoration - Presentation</title>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background-color: #f3f4f6; 
+            margin: 0; 
+            height: 100vh; 
+            width: 100vw;
+            display: flex; 
+            overflow: hidden;
+        }
+
+        /* LAYOUT: Split Screen */
+        #slide-panel {
+            width: 350px;
+            background: white;
+            border-right: 1px solid #e5e7eb;
+            display: flex;
+            flex-direction: column;
+            z-index: 20;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+        }
+
+        #graph-wrapper {
+            flex-grow: 1;
+            position: relative;
+            background: #f9fafb;
+        }
+
+        #network-container { 
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            outline: none;
+        }
+
+        /* SLIDE CONTENT STYLES */
+        .slide-content {
+            padding: 30px;
+            flex-grow: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .slide-header {
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            color: #6b7280;
+            letter-spacing: 0.05em;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .slide-title {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: #111827;
+            margin: 0 0 15px 0;
+            line-height: 1.2;
+        }
+
+        .slide-body {
+            font-size: 1rem;
+            line-height: 1.6;
+            color: #374151;
+        }
+
+        .loop-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 99px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        .badge-R { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+        .badge-B { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+        .badge-Intro { background: #f3f4f6; color: #374151; border: 1px solid #e5e7eb; }
+
+        /* NAVIGATION CONTROLS */
+        .nav-controls {
+            padding: 20px 30px;
+            border-top: 1px solid #e5e7eb;
+            background: #fff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .nav-btn {
+            background: white;
+            border: 1px solid #d1d5db;
+            color: #374151;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .nav-btn:hover { background: #f3f4f6; border-color: #9ca3af; }
+        .nav-btn:active { background: #e5e7eb; }
+        .nav-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .progress-indicator {
+            font-size: 0.85rem;
+            color: #6b7280;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* UTILITIES */
+        #export-btn {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.8);
+            border: 1px solid #ccc;
+            padding: 5px 10px;
+            font-size: 0.7rem;
+            cursor: pointer;
+            opacity: 0.5;
+            transition: opacity 0.2s;
+            z-index: 100;
+        }
+        #export-btn:hover { opacity: 1; }
+
+        /* Loading Overlay */
+        #loading {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255,255,255,0.9);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            z-index: 50;
+            pointer-events: none;
+            transition: opacity 0.5s;
+        }
+
+    </style>
+</head>
+<body>
+
+<div id="slide-panel">
+    <div class="slide-content" id="slide-content">
+        <!-- Content injected by JS -->
+    </div>
+    <div class="nav-controls">
+        <button class="nav-btn" id="btn-prev" onclick="changeSlide(-1)">← Prev</button>
+        <span class="progress-indicator" id="slide-counter">1 / 10</span>
+        <button class="nav-btn" id="btn-next" onclick="changeSlide(1)">Next →</button>
+    </div>
+</div>
+
+<div id="graph-wrapper">
+    <div id="loading">Organizing Layout...</div>
+    <div id="network-container"></div>
+    <button id="export-btn" onclick="exportPositions()" title="Get current coordinates for hardcoding">Export Layout</button>
+</div>
+
+<script type="text/javascript">
+    
+    // --- DATA BLOCK ---
+    
+    const nodesArray = [
+        { id: 'stock_eco_health', label: 'Bioregional\nEcosystem\nHealth', title: 'The accumulation of ecological integrity.', shape: 'box', color: { background: '#CCFBF1', border: '#14B8A6' }, borderWidth: 2 },
+        { id: 'stock_social_trust', label: 'Community\nTrust & Cohesion', title: 'The accumulated reservoir of social capital.', shape: 'box', color: { background: '#CCFBF1', border: '#14B8A6' }, borderWidth: 2 },
+        { id: 'stock_local_knowledge', label: 'Place-Based\nEcological\nKnowledge', title: 'Cumulative local wisdom.', shape: 'box', color: { background: '#CCFBF1', border: '#14B8A6' }, borderWidth: 2 },
+        { id: 'stock_funding', label: 'Available\nResources', title: 'Financial and material buffer.', shape: 'box', color: { background: '#CCFBF1', border: '#14B8A6' }, borderWidth: 2 },
+        { id: 'var_restoration_activity', label: 'Restoration\nActivity', title: 'Rate of active work on the land.', shape: 'ellipse', color: { background: '#DBEAFE', border: '#3B82F6' }, borderWidth: 1 },
+        { id: 'var_eco_services', label: 'Perceptible\nEcosystem\nServices', title: 'Tangible benefits (water, pollination).', shape: 'ellipse', color: { background: '#DBEAFE', border: '#3B82F6' }, borderWidth: 1 },
+        { id: 'var_engagement', label: 'Community\nEngagement', title: 'Participation and political will.', shape: 'ellipse', color: { background: '#DBEAFE', border: '#3B82F6' }, borderWidth: 1 },
+        { id: 'var_livelihoods', label: 'Regenerative\nLivelihoods', title: 'Economic opportunities from the land.', shape: 'ellipse', color: { background: '#DBEAFE', border: '#3B82F6' }, borderWidth: 1 },
+        { id: 'var_burnout', label: 'Volunteer\nBurnout', title: 'Exhaustion of organizers.', shape: 'ellipse', color: { background: '#DBEAFE', border: '#3B82F6' }, borderWidth: 1 },
+        { id: 'var_effectiveness', label: 'Intervention\nEffectiveness', title: 'Success rate per unit of effort.', shape: 'ellipse', color: { background: '#DBEAFE', border: '#3B82F6' }, borderWidth: 1 },
+        { id: 'var_gentrification', label: 'Eco-Gentrification\nPressure', title: 'Property value increases and displacement risks.', shape: 'ellipse', color: { background: '#DBEAFE', border: '#3B82F6' }, borderWidth: 1 }
+    ];
+
+    const edgesData = [
+        { id: 'e1', from: 'var_restoration_activity', to: 'stock_eco_health', arrows: 'to', color: { color: '#1E40AF' }, width: 6 },
+        { id: 'e2', from: 'stock_eco_health', to: 'var_eco_services', arrows: 'to', color: { color: '#1E40AF' }, width: 5 },
+        { id: 'e3', from: 'var_eco_services', to: 'stock_social_trust', arrows: 'to', color: { color: '#1E40AF' }, width: 4 },
+        { id: 'e4', from: 'stock_social_trust', to: 'var_engagement', arrows: 'to', color: { color: '#1E40AF' }, width: 5 },
+        { id: 'e5', from: 'var_engagement', to: 'var_restoration_activity', arrows: 'to', color: { color: '#1E40AF' }, width: 6 },
+        { id: 'e6', from: 'var_restoration_activity', to: 'stock_local_knowledge', arrows: 'to', color: { color: '#1E40AF' }, width: 3 },
+        { id: 'e7', from: 'stock_local_knowledge', to: 'var_effectiveness', arrows: 'to', color: { color: '#1E40AF' }, width: 4 },
+        { id: 'e8', from: 'var_effectiveness', to: 'var_restoration_activity', arrows: 'to', color: { color: '#1E40AF' }, width: 4 },
+        { id: 'e9', from: 'stock_eco_health', to: 'var_livelihoods', arrows: 'to', color: { color: '#1E40AF' }, width: 4 },
+        { id: 'e10', from: 'var_livelihoods', to: 'stock_funding', arrows: 'to', color: { color: '#1E40AF' }, width: 5 },
+        { id: 'e11', from: 'stock_funding', to: 'var_restoration_activity', arrows: 'to', color: { color: '#1E40AF' }, width: 6 },
+        { id: 'e12', from: 'var_restoration_activity', to: 'var_burnout', arrows: 'to', color: { color: '#1E40AF' }, width: 3 },
+        { id: 'e13', from: 'var_burnout', to: 'var_engagement', arrows: 'to', color: { color: '#991B1B' }, width: 5 },
+        { id: 'e14', from: 'stock_eco_health', to: 'var_gentrification', arrows: 'to', color: { color: '#1E40AF' }, width: 4 },
+        { id: 'e15', from: 'var_gentrification', to: 'stock_social_trust', arrows: 'to', color: { color: '#991B1B' }, width: 5 }
+    ];
+
+    const savedFeedbackLoops = [
+        {
+            id: 'learning_loop',
+            name: 'Adaptive Management Cycle',
+            description: 'A reinforcing loop where the act of restoration builds local knowledge. As we work with the land, we learn its language, making future interventions more effective and efficient.',
+            polarity: 'R',
+            nodeIds: ['var_restoration_activity', 'stock_local_knowledge', 'var_effectiveness'],
+            edgeIds: ['e6', 'e7', 'e8']
+        },
+        {
+            id: 'burnout_loop',
+            name: 'The Volunteer Burnout Cycle',
+            description: 'A balancing loop acting as a speed limit. If restoration activity exceeds the community\'s energy reserves, organizers burnout and withdraw, naturally throttling the work back down.',
+            polarity: 'B',
+            nodeIds: ['var_restoration_activity', 'var_burnout', 'var_engagement'],
+            edgeIds: ['e12', 'e13', 'e5']
+        },
+        {
+            id: 'economic_loop',
+            name: 'Regenerative Economy Engine',
+            description: 'This loop represents the shift from grant-dependency to self-sufficiency. Healthier ecosystems allow for sustainable livelihoods (e.g., eco-tourism, agroforestry) which fund further restoration.',
+            polarity: 'R',
+            nodeIds: ['var_restoration_activity', 'stock_eco_health', 'var_livelihoods', 'stock_funding'],
+            edgeIds: ['e1', 'e9', 'e10', 'e11']
+        },
+        {
+            id: 'gentrification_loop',
+            name: 'The Eco-Gentrification Trap',
+            description: 'A dangerous balancing loop. Success attracts capital. As the area improves, property values rise, displacing the very community that stewards the land, potentially collapsing the social trust needed for the project.',
+            polarity: 'B',
+            nodeIds: ['var_restoration_activity', 'stock_eco_health', 'var_gentrification', 'stock_social_trust', 'var_engagement'],
+            edgeIds: ['e1', 'e14', 'e15', 'e4', 'e5']
+        },
+        {
+            id: 'social_loop',
+            name: 'Social Capital Accumulation',
+            description: 'The core engine. Restoration creates visible benefits (cleaner water, less flooding). These "wins" build trust, which fuels engagement, creating a powerful flywheel of community action.',
+            polarity: 'R',
+            nodeIds: ['var_restoration_activity', 'stock_eco_health', 'var_eco_services', 'stock_social_trust', 'var_engagement'],
+            edgeIds: ['e1', 'e2', 'e3', 'e4', 'e5']
+        }
+    ];
+
+    const systemArchetypes = [
+        {
+            id: 'arch1',
+            name: 'Archetype: Limits to Growth',
+            description: 'The "Social Capital" engine drives early success. However, the system eventually hits the "Gentrification" limit. If displacement isn\'t addressed, the initial growth will reverse as the community fractures.',
+            polarity: 'Arch',
+            relatedLoops: ['social_loop', 'gentrification_loop'],
+            nodeIds: ['stock_eco_health', 'var_gentrification', 'stock_social_trust', 'var_eco_services', 'var_engagement', 'var_restoration_activity'],
+            edgeIds: ['e14', 'e15', 'e1', 'e2', 'e3', 'e4', 'e5']
+        }
+    ];
+
+    // --- PRESENTATION LOGIC ---
+
+    // 1. Build Slide Deck
+    let slides = [
+        {
+            type: 'Intro',
+            name: 'Bioregional Ecosystem Restoration',
+            description: 'This model explores the dynamic relationship between ecological health and social cohesion. <br><br>Use the <b>Arrow Keys</b> or buttons below to navigate the story of how restoration communities succeed or fail.',
+            nodeIds: [],
+            edgeIds: []
+        }
+    ];
+
+    // Add Loops
+    savedFeedbackLoops.forEach(loop => {
+        slides.push({
+            type: loop.polarity,
+            name: loop.name,
+            description: loop.description,
+            nodeIds: loop.nodeIds,
+            edgeIds: loop.edgeIds
+        });
+    });
+
+    // Add Archetypes
+    systemArchetypes.forEach(arch => {
+        slides.push({
+            type: 'Arch',
+            name: arch.name,
+            description: arch.description,
+            nodeIds: arch.nodeIds,
+            edgeIds: arch.edgeIds
+        });
+    });
+
+    let currentSlideIndex = 0;
+
+    // --- VIS.JS SETUP ---
+
+    const container = document.getElementById('network-container');
+    const nodes = new vis.DataSet(nodesArray);
+    const edges = new vis.DataSet(edgesData.map(e => ({
+        ...e,
+        // Ensure arrows are visible and labels readable
+        font: { align: 'horizontal', size: 12, strokeWidth: 3, strokeColor: '#ffffff', color: '#374151', background: 'none' } 
+    })));
+
+    const data = { nodes: nodes, edges: edges };
+    
+    // Config: Physics enabled initially for layout, then we disable it.
+    const options = {
+        nodes: {
+            font: { multi: 'html', size: 16 },
+            borderWidthSelected: 2,
+            shadow: true,
+        },
+        edges: {
+            smooth: { type: 'cubicBezier', forceDirection: 'none', roundness: 0.2 },
+            width: 2,
+            selectionWidth: 4,
+            shadow: false
+        },
+        physics: {
+            enabled: true,
+            barnesHut: {
+                gravitationalConstant: -4000, // Strong repulsion to spread nodes
+                centralGravity: 0.1,
+                springLength: 200, // Longer springs to reduce label overlap
+                springConstant: 0.04,
+                damping: 0.09
+            },
+            stabilization: {
+                enabled: true,
+                iterations: 1000, // Pre-calculate 1000 steps before showing
+                updateInterval: 50,
+                onlyDynamicEdges: false,
+                fit: true
+            }
+        },
+        interaction: { 
+            hover: true, 
+            dragNodes: true, // Allow user to fix layout manually
+            zoomView: true,
+            dragView: true
+        }
+    };
+
+    const network = new vis.Network(container, data, options);
+
+    // --- LOGIC: FREEZE PHYSICS & HIGHLIGHTING ---
+
+    // 1. When stabilization finishes, TURN OFF PHYSICS.
+    // This stops the "jelly" effect and allows dragging to fix layout permanently.
+    network.on("stabilizationIterationsDone", function () {
+        network.setOptions( { physics: false } );
+        document.getElementById('loading').style.opacity = '0';
+        console.log("Physics disabled. Layout frozen.");
+        renderSlide(currentSlideIndex); // Initial render
+    });
+
+    // 2. Navigation Logic
+    function changeSlide(direction) {
+        let newIndex = currentSlideIndex + direction;
+        if (newIndex >= 0 && newIndex < slides.length) {
+            currentSlideIndex = newIndex;
+            renderSlide(currentSlideIndex);
+        }
+    }
+
+    function renderSlide(index) {
+        const slide = slides[index];
+        const contentDiv = document.getElementById('slide-content');
+        const counter = document.getElementById('slide-counter');
+        const prevBtn = document.getElementById('btn-prev');
+        const nextBtn = document.getElementById('btn-next');
+
+        // Update UI Text
+        let badgeHtml = slide.type === 'Intro' ? '' : `<span class="loop-badge badge-${slide.type}">${slide.type === 'Arch' ? 'Archetype' : (slide.type === 'R' ? 'Reinforcing Loop' : 'Balancing Loop')}</span>`;
+        
+        contentDiv.innerHTML = `
+            <div class="slide-header">Part ${index + 1} of ${slides.length}</div>
+            ${badgeHtml}
+            <h2 class="slide-title">${slide.name}</h2>
+            <div class="slide-body">${slide.description}</div>
+        `;
+
+        // Update Counter & Buttons
+        counter.innerText = `${index + 1} / ${slides.length}`;
+        prevBtn.disabled = index === 0;
+        nextBtn.disabled = index === slides.length - 1;
+
+        // Update Graph Highlighting
+        updateGraphVisuals(slide);
+    }
+
+    function updateGraphVisuals(slide) {
+        // If Intro, show everything normally
+        if (slide.type === 'Intro') {
+            nodes.forEach(n => {
+                nodes.update({id: n.id, opacity: 1, color: { opacity: 1 } });
+            });
+            edges.forEach(e => {
+                edges.update({id: e.id, color: { opacity: 1 } });
+            });
+            network.fit({ animation: true });
+            return;
+        }
+
+        // Otherwise, dim everything then highlight target components
+        const allNodeIds = nodes.getIds();
+        const allEdgeIds = edges.getIds();
+        
+        // Helper to check if node/edge is in current slide
+        const isTargetNode = (id) => slide.nodeIds.includes(id);
+        const isTargetEdge = (id) => slide.edgeIds.includes(id);
+
+        // Batch update for performance
+        const nodeUpdates = allNodeIds.map(id => {
+            const isTarget = isTargetNode(id);
+            const originalColor = nodesArray.find(n => n.id === id).color;
+            return {
+                id: id,
+                opacity: isTarget ? 1 : 0.2, // Fade out non-targets
+                // Vis.js requires resetting color object to change opacity fully
+                color: { 
+                    background: originalColor.background, 
+                    border: originalColor.border,
+                    opacity: isTarget ? 1 : 0.1
+                }
+            };
+        });
+
+        const edgeUpdates = allEdgeIds.map(id => {
+            const isTarget = isTargetEdge(id);
+            const originalColor = edgesData.find(e => e.id === id).color.color;
+            return {
+                id: id,
+                color: { 
+                    color: originalColor, 
+                    opacity: isTarget ? 1 : 0.05 // Heavy fade for edges
+                },
+                width: isTarget ? 4 : 1
+            };
+        });
+
+        nodes.update(nodeUpdates);
+        edges.update(edgeUpdates);
+
+        // Zoom to fit the active loop
+        if (slide.nodeIds.length > 0) {
+            network.fit({
+                nodes: slide.nodeIds,
+                animation: { duration: 1000, easingFunction: 'easeInOutQuad' },
+                offset: {x: 0, y: 0} // Center it
+            });
+        }
+    }
+
+    // Keyboard Listener
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight') changeSlide(1);
+        if (e.key === 'ArrowLeft') changeSlide(-1);
+    });
+
+    // Resize Observer suppression (just in case)
+    window.addEventListener('error', function(e) {
+        if (e.message && e.message.includes('ResizeObserver')) {
+            e.stopImmediatePropagation();
+        }
+    });
+
+    // Export Helper
+    function exportPositions() {
+        const positions = network.getPositions();
+        console.log("COORDINATES FOR HARDCODING:");
+        console.log(JSON.stringify(positions, null, 2));
+        alert("Node coordinates printed to Console (F12). You can copy them to hardcode the layout if desired.");
+    }
+
+</script>
+</body>
+</html>
